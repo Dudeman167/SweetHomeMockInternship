@@ -464,6 +464,7 @@ public class HomeFurniturePanel extends JPanel implements DialogView {
           }
         });
     }
+
     
     if (controller.isPropertyEditable(HomeFurnitureController.Property.PROPORTIONAL)) {
       // Create keep proportions check box bound to PROPORTIONAL controller property
