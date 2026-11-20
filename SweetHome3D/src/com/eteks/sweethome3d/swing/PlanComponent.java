@@ -311,6 +311,11 @@ public class PlanComponent extends JComponent implements PlanView, Scrollable, P
   private Map<RotatedTextureKey, BufferedImage> floorTextureImagesCache;
   private Map<HomePieceOfFurniture, PieceOfFurnitureTopViewIcon> furnitureTopViewIconsCache;
 
+  // Fields for multi-level printing
+  private Level                printOriginalLevel;
+  private List<Level>          printViewableLevels;
+  private boolean              printMultiLevelInit = false;
+
   private static ExecutorService            backgroundImageLoader;
   
   private static final Shape       POINT_INDICATOR;
@@ -2008,6 +2013,38 @@ public class PlanComponent extends JComponent implements PlanView, Scrollable, P
    * that makes it fill <code>pageFormat</code> imageable size if this attribute is <code>null</code>.
    */
   public int print(Graphics g, PageFormat pageFormat, int pageIndex) {
+    // Initialize multi-level state on the first call
+    if (!this.printMultiLevelInit) {
+      this.printOriginalLevel = home.getSelectedLevel();
+      this.printViewableLevels = new ArrayList<Level>();
+      for (Level level : home.getLevels()) {
+        if (level.isViewable()) {
+          this.printViewableLevels.add(level);
+        }
+      }
+      this.printMultiLevelInit = true;
+    }
+
+    // Check if pageIndex is out of bounds
+    if (pageIndex >= this.printViewableLevels.size()) {
+      // Restore the original level, reset for next print job, and signal no more pages
+      if (this.printOriginalLevel != null) {
+        home.setSelectedLevel(this.printOriginalLevel);
+      }
+      this.printMultiLevelInit = false;
+      this.printViewableLevels = null;
+      return NO_SUCH_PAGE;
+    }
+
+    // Set the level to be printed based on pageIndex
+    Level levelToPrint = this.printViewableLevels.get(pageIndex);
+    if (levelToPrint != null) {
+      home.setSelectedLevel(levelToPrint);
+    }
+
+    // flag for if this is the last real page
+    boolean isLastPage = (pageIndex == this.printViewableLevels.size() - 1);
+    //og code -> paint levls on the selected page, which were chosen above
     List<Selectable> printedItems = getPaintedItems(); 
     Rectangle2D printedItemBounds = getItemsBounds(g, printedItems);
     if (printedItemBounds != null) {
@@ -2023,9 +2060,6 @@ public class PlanComponent extends JComponent implements PlanView, Scrollable, P
       if (this.home.getPrint() == null || this.home.getPrint().getPlanScale() == null) {
         // Compute a scale that ensures the plan will fill the component if plan scale is null
         printScale = getPrintPreferredScale(g, pageFormat) * LengthUnit.centimeterToInch(72);
-        if (pageIndex > 0) {
-          return NO_SUCH_PAGE;
-        }
         pagesPerRow = 1;
         pagesPerColumn = 1;
         rowIndex   = 0;
@@ -2069,8 +2103,25 @@ public class PlanComponent extends JComponent implements PlanView, Scrollable, P
         // Ignore exception because it may happen only in EXPORT paint mode 
       }   
       g2D.dispose();
+      // Restore the original level after printing each page to ensure user remains on the same level -
+      // This does NOT change the printed level since we select that at the start of the print function, it's
+      // just a redundancy.
+      if (this.printOriginalLevel != null) {
+        home.setSelectedLevel(this.printOriginalLevel);
+      }
+      // Reset printing state after printing the last page so the next print starts fresh (redundancy)
+      if (isLastPage) {
+        this.printMultiLevelInit = false;
+        this.printViewableLevels = null;
+      }
       return PAGE_EXISTS;
     } else {
+      // No items to print, restore the original level and reset (redundancy)
+      if (this.printOriginalLevel != null) {
+        home.setSelectedLevel(this.printOriginalLevel);
+      }
+      this.printMultiLevelInit = false;
+      this.printViewableLevels = null;
       return NO_SUCH_PAGE;
     }
   }
